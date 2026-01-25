@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: 1. 코드 가져오기
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # 모든 히스토리를 가져와 충돌 방지
 
       - name: 2. 파이썬 설정
         uses: actions/setup-python@v4
@@ -18,10 +20,9 @@ jobs:
           python-version: '3.10'
 
       - name: 3. 라이브러리 설치
-        run: |
-          pip install yfinance pandas requests
+        run: pip install yfinance pandas requests
 
-      - name: 4. AI 시스템 가동 (수집/분석/채점/시그널)
+      - name: 4. AI 시스템 가동
         run: |
           python market_scanner.py
           python reasoning_engine.py
@@ -34,10 +35,11 @@ jobs:
           git config --global user.email "ai@autobot.com"
           git add market_history.csv hypothesis_log.txt learning_results.txt
           
-          # [핵심] 변경된 내용이 있을 때만 커밋하고, 없으면 그냥 무시하고 성공 처리함
+          # 변경사항이 있을 때만 실행
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "AI 지식 업데이트: $(date)"
+            git pull --rebase origin main # 👈 [rejected] 오류 해결사
             git push
           else
-            echo "업데이트할 데이터가 없습니다. 다음 스케줄을 기다립니다."
+            echo "업데이트할 데이터가 없습니다."
           fi

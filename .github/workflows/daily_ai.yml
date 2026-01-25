@@ -2,42 +2,42 @@ name: Daily Market AI Learning
 
 on:
   schedule:
-    - cron: '0 0 * * *' # UTC 기준 00:00 (한국 시간 오전 9:00)
-  workflow_dispatch: # 원할 때 수동으로도 실행 가능
+    - cron: '0 0 * * *' # 매일 오전 9시
+  workflow_dispatch: 
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 코드 가져오기
+      - name: 1. 코드 가져오기
         uses: actions/checkout@v3
 
-      - name: 파이썬 설정
+      - name: 2. 파이썬 설정
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 라이브러리 설치
+      - name: 3. 라이브러리 설치
         run: |
-          pip install yfinance pandas
+          pip install yfinance pandas requests
 
-      - name: AI 시스템 가동
+      - name: 4. AI 시스템 가동 (수집/분석/채점/시그널)
         run: |
           python market_scanner.py
           python reasoning_engine.py
           python learning_module.py
+          python integrated_signal_bot.py
 
-      - name: 변경된 데이터 저장 (지식 축적)
+      - name: 5. 변경된 데이터 저장 (지식 축적)
         run: |
           git config --global user.name "Auto-AI"
           git config --global user.email "ai@autobot.com"
           git add market_history.csv hypothesis_log.txt learning_results.txt
-          git commit -m "AI 지식 업데이트: $(date)"
-          git push
-
-          - name: AI 시스템 가동 및 시그널 전송
-        run: |
-          python market_scanner.py
-          python reasoning_engine.py
-          python learning_module.py
-          python integrated_signal_bot.py  # 이 줄이 추가되어야 디코로 알림이 옵니다!
+          
+          # [핵심] 변경된 내용이 있을 때만 커밋하고, 없으면 그냥 무시하고 성공 처리함
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "AI 지식 업데이트: $(date)"
+            git push
+          else
+            echo "업데이트할 데이터가 없습니다. 다음 스케줄을 기다립니다."
+          fi

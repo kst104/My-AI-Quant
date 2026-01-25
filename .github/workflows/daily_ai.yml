@@ -3,16 +3,20 @@ name: Daily Market AI Learning
 on:
   schedule:
     - cron: '0 0 * * *' # 매일 오전 9시
-  workflow_dispatch: 
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 비서에게 쓰기 권한을 명시적으로 부여 (이중 잠금 해제)
+    permissions:
+      contents: write
+      
     steps:
       - name: 1. 코드 가져오기
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # 모든 히스토리를 가져와 충돌 방지
+          fetch-depth: 0 # 모든 기록을 다 가져와서 충돌 방지
 
       - name: 2. 파이썬 설정
         uses: actions/setup-python@v4
@@ -22,7 +26,7 @@ jobs:
       - name: 3. 라이브러리 설치
         run: pip install yfinance pandas requests
 
-      - name: 4. AI 시스템 가동
+      - name: 4. AI 시스템 전체 가동
         run: |
           python market_scanner.py
           python reasoning_engine.py
@@ -33,12 +37,14 @@ jobs:
         run: |
           git config --global user.name "Auto-AI"
           git config --global user.email "ai@autobot.com"
+          
+          # 변경된 파일이 있는지 확인
           git add market_history.csv hypothesis_log.txt learning_results.txt
           
-          # 변경사항이 있을 때만 실행
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "AI 지식 업데이트: $(date)"
-            git pull --rebase origin main # 👈 [rejected] 오류 해결사
+            # [핵심] 서버의 최신 상태와 강제로 합치기
+            git pull --rebase origin main
             git push
           else
             echo "업데이트할 데이터가 없습니다."

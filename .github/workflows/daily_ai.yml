@@ -1,0 +1,36 @@
+name: Daily Market AI Learning
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # UTC 기준 00:00 (한국 시간 오전 9:00)
+  workflow_dispatch: # 원할 때 수동으로도 실행 가능
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v3
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 라이브러리 설치
+        run: |
+          pip install yfinance pandas
+
+      - name: AI 시스템 가동
+        run: |
+          python market_scanner.py
+          python reasoning_engine.py
+          python learning_module.py
+
+      - name: 변경된 데이터 저장 (지식 축적)
+        run: |
+          git config --global user.name "Auto-AI"
+          git config --global user.email "ai@autobot.com"
+          git add market_history.csv hypothesis_log.txt learning_results.txt
+          git commit -m "AI 지식 업데이트: $(date)"
+          git push

@@ -15,7 +15,6 @@ NEWS_KEY = os.environ.get("NEWS_API_KEY")
 PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 DISCORD_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
-# 설정 누락 시 즉시 실패(X) 처리
 if not all([GEMINI_KEY, DISCORD_URL, PINECONE_KEY]):
     print("❌ 에러: GitHub Secrets 설정이 누락되었습니다.")
     sys.exit(1)
@@ -24,29 +23,34 @@ genai.configure(api_key=GEMINI_KEY)
 pc = Pinecone(api_key=PINECONE_KEY)
 index = pc.Index("alpha-trio-memory")
 
-# [2. 고수준 지표 계산 엔진: 지능 복구]
+# [2. 고수준 지표 계산 엔진: RSI, ATR, BB, MACD, TDI]
 def calculate_expert_indicators(df):
     df = df.copy()
     close = df['Close']
+    
     # RSI (13)
     delta = close.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=13).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=13).mean()
     df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+    
     # ATR (14)
     tr = pd.concat([df['High']-df['Low'], abs(df['High']-close.shift()), abs(df['Low']-close.shift())], axis=1).max(axis=1)
     df['ATR'] = tr.rolling(window=14).mean()
+    
     # Bollinger Bands (20, 2)
     df['BB_Mid'] = close.rolling(window=20).mean()
     df['BB_Std'] = close.rolling(window=20).std()
     df['BBU'] = df['BB_Mid'] + (df['BB_Std'] * 2)
+    
     # MACD (12, 26)
     df['MACD'] = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+    
     # TDI (Price Line)
     df['TDI_P'] = df['RSI'].rolling(window=2).mean()
     return df
 
-def get_full_market_data():
+def get_intelligence_data():
     targets = ["^GSPC", "^IXIC", "NVDA", "SOXX", "^TNX"]
     summary = ""
     for t in targets:
@@ -57,11 +61,17 @@ def get_full_market_data():
             change = ((l['Close'] - p['Close']) / p['Close']) * 100
             summary += f"[{t}] P:{round(float(l['Close']),2)}({round(float(change),2)}%) | RSI:{round(float(l['RSI']),1)} | ATR:{round(float(l['ATR']),2)} | TDI_P:{round(float(l['TDI_P']),1)}\n"
         except: continue
-    return summary
+    
+    try:
+        news_res = requests.get(f"https://newsapi.org/v2/top-headlines?category=business&apiKey={NEWS_KEY}").json()
+        news_list = news_res.get('articles', [])[:5]
+        news = "\n".join([f"- {a['title']}" for a in news_list])
+    except: news = "뉴스 데이터를 가져오지 못했습니다."
+    return summary, news
 
-# [3. 3인 에이전트 끝장 토론]
+# [3. 3인 에이전트 끝장 토론 엔진]
 def run_alpha_trio_council():
-    m = get_full_market_data()
+    m, n = get_intelligence_data()
     try:
         embed = genai.embed_content(model="models/text-embedding-004", content=m)['embedding']
         past = index.query(vector=embed, top_k=1, include_metadata=True)
@@ -69,7 +79,7 @@ def run_alpha_trio_council():
     except: memory = "기억 저장소 연결 불가."
 
     prompt = f"""당신은 Alpha-Trio 2.7 전략 위원회입니다.
-    데이터: {m} | 과거 기록: {memory}
+    데이터: {m} | 뉴스: {n} | 과거 기록: {memory}
 
     [미션]
     1. 에이전트 A (Quant): $RSI$, $TDI$, $ATR$의 상관관계를 통해 수급의 함정을 찾아라.
@@ -83,15 +93,14 @@ def run_alpha_trio_council():
 
 # [4. 무조건 꽂히는 분할 전송 로직]
 def send_safe_discord(content):
-    # 디스코드 2000자 제한을 피하기 위해 1800자 단위 분할
     chunks = [content[i:i+1800] for i in range(0, len(content), 1800)]
     for i, chunk in enumerate(chunks):
         title = f"🏛️ **Alpha-Trio 2.7 보고서 ({i+1}/{len(chunks)})**"
         msg = f"{title}\n```json\n{chunk}\n```"
         res = requests.post(DISCORD_URL, json={"content": msg})
         if res.status_code != 204:
-            print(f"❌ 전송 실패: {res.status_code} - {res.text}")
-            sys.exit(1) # 실패 시 깃허브 액션을 빨간색(X)으로 만듦
+            print(f"❌ 전송 실패: {res.status_code}")
+            sys.exit(1)
     print("✅ 모든 보고서 전송 성공")
 
 if __name__ == "__main__":

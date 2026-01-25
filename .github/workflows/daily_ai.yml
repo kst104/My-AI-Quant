@@ -34,3 +34,10 @@ jobs:
           git add market_history.csv hypothesis_log.txt learning_results.txt
           git commit -m "AI 지식 업데이트: $(date)"
           git push
+
+          - name: AI 시스템 가동 및 시그널 전송
+        run: |
+          python market_scanner.py
+          python reasoning_engine.py
+          python learning_module.py
+          python integrated_signal_bot.py  # 이 줄이 추가되어야 디코로 알림이 옵니다!

@@ -3,49 +3,49 @@ name: Daily Market AI Learning
 on:
   schedule:
     - cron: '0 0 * * *' # 매일 오전 9시
-  workflow_dispatch: 
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # 비서에게 쓰기 권한 부여
       
     steps:
-      - name: 1. 코드 가져오기
+      - name: 1. 저장소 코드 가져오기
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # 모든 히스토리를 다 가져옴 (중요)
+          fetch-depth: 0 # 모든 기록을 가져와야 충돌을 해결할 수 있습니다.
 
-      - name: 2. 파이썬 및 라이브러리 설정
+      - name: 2. 환경 설정 및 라이브러리 설치
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
       - run: pip install yfinance pandas requests
 
-      - name: 3. AI 시스템 가동
+      - name: 3. AI 시스템 전체 가동
         run: |
           python market_scanner.py
           python reasoning_engine.py
           python learning_module.py
           python integrated_signal_bot.py
 
-      - name: 4. 강제 동기화 및 지식 저장
+      - name: 4. 지식 저장 (충돌 자동 해결 버전)
         run: |
           git config --global user.name "Auto-AI"
           git config --global user.email "ai@autobot.com"
           
-          # 1. 일단 현재 변경사항(CSV 등)을 장바구니에 담음
-          git add .
+          # 데이터 파일들만 안전하게 선택
+          git add market_history.csv hypothesis_log.txt learning_results.txt
           
-          # 2. 변경사항이 진짜 있을 때만 진행
+          # 변경사항이 있을 때만 진행
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "AI 지식 업데이트: $(date)"
             
-            # 3. [불도저 포인트] 서버의 최신 내용을 가져와서 내 뒤에 붙임
-            git pull origin main --rebase
+            # [핵심] 서버의 최신 상태를 가져와서 내 작업물 뒤에 자연스럽게 붙임
+            git pull --rebase origin main
             
-            # 4. 최종 업로드
+            # 최종 업로드
             git push origin main
           else
             echo "업데이트할 데이터가 없습니다."

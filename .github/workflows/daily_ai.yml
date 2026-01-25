@@ -12,16 +12,18 @@ jobs:
       - name: 1. 코드 체크아웃
         uses: actions/checkout@v4
 
-      - name: 2. 파이썬 설정 (3.11 고정)
+      - name: 2. 파이썬 설정 (3.12로 점프)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
-      - name: 3. 인프라 라이브러리 설치
+      - name: 3. 인프라 라이브러리 설치 (강제 고정)
         run: |
           pip install --upgrade pip
-          # 핵심: 설치는 반드시 하이픈(-)이 들어간 pandas-ta로 해야 합니다.
-          pip install yfinance pandas requests google-generativeai pinecone-client pandas-ta
+          # 최신 판다스 3.0과의 충돌을 피하기 위해 2.2.2로 고정합니다.
+          pip install yfinance pandas==2.2.2 requests google-generativeai pinecone-client
+          # PyPI 서버 에러를 피하기 위해 개발자 소스에서 직접 설치합니다.
+          pip install git+https://github.com/twopirllc/pandas-ta.git@development
 
       - name: 4. Alpha-Trio 2.1 가동
         env:

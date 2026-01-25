@@ -3,7 +3,7 @@ import requests
 import os
 
 # 디스코드 설정 (채널 설정 -> 연동 -> 웹후크 에서 복사한 URL)
-DISCORD_WEBHOOK_URL = "여기에_디스코드_웹후크_URL_입력"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1465062577879912686/22xOANOrt0m1AAIDoMyHUinUZhDxlrfry588g0JG7vYF3aA8MkccLP8ITf2AC19tq3GV"
 
 def send_discord_msg(message):
     payload = {"content": message}

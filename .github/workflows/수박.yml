@@ -17,10 +17,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 3. 필수 라이브러리만 설치
+      - name: 3. 인프라 라이브러리 설치 (최종)
         run: |
           pip install --upgrade pip
-          # 에러 유발자 pandas-ta를 빼고, 최신 pinecone을 설치합니다.
+          # 최신 pinecone 패키지명을 사용합니다.
           pip install yfinance pandas numpy requests google-generativeai pinecone
 
       - name: 4. Alpha-Trio 2.5 가동

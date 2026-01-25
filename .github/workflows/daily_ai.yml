@@ -2,7 +2,7 @@ name: Alpha-Trio 2.1 Daily Operation
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *' # 매일 아침 9시(KST) 자동 실행
   workflow_dispatch: 
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
       - name: 1. 코드 체크아웃
         uses: actions/checkout@v4
 
-      - name: 2. 파이썬 설정
+      - name: 2. 파이썬 설정 (3.11)
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -20,6 +20,7 @@ jobs:
       - name: 3. 인프라 라이브러리 설치
         run: |
           pip install --upgrade pip
+          # pandas_ta(X) -> pandas-ta(O) 명칭 수정 완료
           pip install yfinance pandas requests google-generativeai pinecone-client pandas-ta
 
       - name: 4. Alpha-Trio 2.1 가동

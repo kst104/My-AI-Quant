@@ -1,0 +1,47 @@
+name: Alpha-Trio Infinite Loop
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+jobs:
+  intelligence_loop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: true
+      - name: 2. Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 3. Install libs
+        run: |
+          pip install --upgrade pip
+          # [수정] openai, google-genai 추가 (필수 의존성)
+          # pinecone-client로 명시 권장 (pinecone도 가능하지만 확실하게)
+          pip install yfinance pandas numpy requests pinecone-client lxml openai google-genai
+      - name: 3.5 Debug — show commit & file head
+        run: |
+          echo "GIT SHA:"
+          git rev-parse HEAD
+          echo ""
+          echo "WORKFLOW FILE:"
+          ls -al .github/workflows || true
+          echo ""
+          echo "alpha_trio_infinite.py HEAD (first 60 lines):"
+          sed -n '1,60p' alpha_trio_infinite.py
+          echo ""
+          # [수정] 모델명 확인용 grep은 유지하되, 일부 불필요한 체크는 생략 가능
+          echo "Checking for key imports:"
+          grep "google.genai" alpha_trio_infinite.py || true
+      - name: 4. Run
+        env:
+          # [수정] 모든 API Key 환경 변수로 주입
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python alpha_trio_infinite.py

@@ -46,6 +46,8 @@ type LiveQuote = {
 type UniverseStock = Pick<LiveQuote, "symbol" | "name" | "market" | "price" | "change" | "volume" | "marketStatus" | "tradedAt"> & {
   marketCap: number | null;
   tradingValue: number | null;
+  previousFridayClose: number | null;
+  weeklyChange: number | null;
 };
 
 type PipelineNode = {
@@ -153,6 +155,7 @@ const pipelineLibrary: PipelineNode[] = [
   { id: "oneil", name: "CAN SLIM", category: "GURU", detail: "전체 유니버스에서 시가총액 규모와 강한 당일 가격 모멘텀이 겹친 종목을 계산합니다.", rule: "시총 ≥ 5,000억원 · 등락률 ≥ 3%" },
   { id: "value", name: "가치+모멘텀", category: "VALUE", detail: "전체 유니버스에서 중소형 시가총액 구간에 있으면서 상승 중인 종목을 계산합니다.", rule: "시총 3,000억원~2조원 · 등락률 > 0%" },
   { id: "c70", name: "조건70 돌파", category: "COND", detail: "전체 유니버스에서 높은 당일 상승률과 충분한 거래대금이 함께 나타난 돌파 후보를 계산합니다.", rule: "등락률 ≥ 5% · 거래대금 중간값 이상" },
+  { id: "weekly10", name: "10%이하 주간 상승", category: "WEEK", detail: "시가총액 3,000억원 이상 전체 종목에서 전주 금요일 종가보다 현재 종가가 높고, 주간 상승률이 10% 이하인 종목을 계산합니다.", rule: "0% < 전주 금요일 종가 대비 현재 종가 상승률 ≤ 10%" },
   { id: "risk", name: "급락 경고", category: "RISK", detail: "전체 유니버스에서 거래가 충분하면서 당일 낙폭이 큰 위험 관찰 종목을 계산합니다.", rule: "등락률 ≤ -5% · 거래대금 중간값 이상" },
 ];
 
@@ -197,6 +200,7 @@ function matchesNode(nodeId: string, stock: UniverseStock, stats: UniverseStats)
   const change = stock.change;
   const tradingValue = stock.tradingValue;
   const marketCap = stock.marketCap;
+  if (nodeId === "weekly10") return stock.weeklyChange != null && stock.weeklyChange > 0 && stock.weeklyChange <= 10;
   if (change == null || marketCap == null) return false;
 
   switch (nodeId) {
@@ -281,6 +285,8 @@ export default function Home() {
   const [universeLoading, setUniverseLoading] = useState(false);
   const [workflowRefreshing, setWorkflowRefreshing] = useState(false);
   const [workflowRefreshedAt, setWorkflowRefreshedAt] = useState<string | null>(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyProgress, setWeeklyProgress] = useState({ completed: 0, total: 0 });
   const [intersectionResults, setIntersectionResults] = useState<Array<UniverseStock & { matchedBy: string[] }>>([]);
 
   const baseStock = stocks.find((item) => item.symbol === selectedSymbol) ?? stocks[0];
@@ -331,6 +337,12 @@ export default function Home() {
       node.isSource ? universeStocks.length : universeStocks.filter((stock) => matchesNode(node.id, stock, universeStats)).length,
     ]),
   ) as Record<string, number>, [universeStocks, universeStats]);
+  const weeklyDataReady = universeStocks.some((item) => item.weeklyChange != null);
+  const nodeCandidateLabel = (node: PipelineNode) => {
+    if (node.isSource) return universeStocks.length ? `기준 통과 ${universeStocks.length.toLocaleString("ko-KR")}개` : "시총 3,000억 이상";
+    if (node.id === "weekly10" && !weeklyDataReady) return weeklyLoading ? `주간 기준 ${weeklyProgress.completed}/${weeklyProgress.total}` : "전주 금요일 종가 새로받기 필요";
+    return universeStocks.length ? `현재 후보 ${nodeCandidateCounts[node.id].toLocaleString("ko-KR")}개` : "전체 유니버스 계산";
+  };
 
   const fetchQuotes = useCallback(async (symbols: string[]) => {
     const uniqueSymbols = [...new Set(symbols)];
@@ -371,11 +383,12 @@ export default function Home() {
       if (!response.ok || !payload.stocks?.length) {
         throw new Error(payload.error ?? "한국 시장 전체 종목을 불러오지 못했습니다.");
       }
-      setUniverseStocks(payload.stocks);
+      const normalizedStocks = payload.stocks.map((stock) => ({ ...stock, previousFridayClose: stock.previousFridayClose ?? null, weeklyChange: stock.weeklyChange ?? null }));
+      setUniverseStocks(normalizedStocks);
       setUniverseCounts({ KOSPI: payload.counts?.KOSPI ?? 0, KOSDAQ: payload.counts?.KOSDAQ ?? 0 });
       setUniverseUpdatedAt(payload.updatedAt ?? new Date().toISOString());
       setLastUpdated(payload.updatedAt ?? new Date().toISOString());
-      return payload.stocks;
+      return normalizedStocks;
     } finally {
       setUniverseLoading(false);
     }
@@ -402,6 +415,45 @@ export default function Home() {
       setHistoryError(error instanceof Error ? error.message : "차트 데이터를 불러오지 못했습니다.");
     } finally {
       setHistoryLoading(false);
+    }
+  }, []);
+
+  const fetchWeeklyReferences = useCallback(async (items: UniverseStock[]) => {
+    const batchSize = 20;
+    const batches = Array.from({ length: Math.ceil(items.length / batchSize) }, (_, index) => items.slice(index * batchSize, (index + 1) * batchSize));
+    const references = new Map<string, number>();
+    let nextBatch = 0;
+    let completed = 0;
+    setWeeklyLoading(true);
+    setWeeklyProgress({ completed: 0, total: batches.length });
+    try {
+      const worker = async () => {
+        while (nextBatch < batches.length) {
+          const batch = batches[nextBatch];
+          nextBatch += 1;
+          try {
+            const response = await fetch(`/api/weekly-reference?symbols=${batch.map((item) => item.symbol).join(",")}`, { cache: "no-store" });
+            const payload = await response.json() as { references?: Array<{ symbol: string; previousFridayClose: number }> };
+            if (response.ok) payload.references?.forEach((item) => references.set(item.symbol, item.previousFridayClose));
+          } finally {
+            completed += 1;
+            setWeeklyProgress({ completed, total: batches.length });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(3, batches.length) }, () => worker()));
+      if (references.size === 0) throw new Error("전주 금요일 종가 데이터가 없습니다.");
+      const enriched = items.map((item) => {
+        const previousFridayClose = references.get(item.symbol) ?? null;
+        const weeklyChange = item.price != null && previousFridayClose != null && previousFridayClose > 0
+          ? ((item.price / previousFridayClose) - 1) * 100
+          : null;
+        return { ...item, previousFridayClose, weeklyChange };
+      });
+      setUniverseStocks(enriched);
+      return enriched;
+    } finally {
+      setWeeklyLoading(false);
     }
   }, []);
 
@@ -454,7 +506,10 @@ export default function Home() {
     setRunComplete(false);
     setRefreshError("");
     try {
-      const universe = universeStocks.length > 0 ? universeStocks : await fetchUniverse();
+      let universe = universeStocks.length > 0 ? universeStocks : await fetchUniverse();
+      if (selectedConditionPipeline.some((node) => node.id === "weekly10") && !universe.some((item) => item.weeklyChange != null)) {
+        universe = await fetchWeeklyReferences(universe);
+      }
       const currentStats = buildUniverseStats(universe);
       const matchedBy = selectedConditionPipeline.map((node) => node.name);
       setIntersectionResults(
@@ -476,7 +531,8 @@ export default function Home() {
     setRunComplete(false);
     setRefreshError("");
     try {
-      const universe = await fetchUniverse();
+      const freshUniverse = await fetchUniverse();
+      const universe = await fetchWeeklyReferences(freshUniverse);
       const currentStats = buildUniverseStats(universe);
       if (selectedConditionPipeline.length > 0) {
         const matchedBy = selectedConditionPipeline.map((node) => node.name);
@@ -671,12 +727,12 @@ export default function Home() {
           <section className="subpage-hero workflow-hero">
             <div><span className="eyebrow">INTERSECTION NODE WORKFLOW</span><h1>시총 3,000억 이상 종목에서,<br />모든 조건을 만족한 종목만.</h1><p>1번 노드가 만든 전체 유니버스를 각 조건 노드가 실제 데이터로 다시 평가합니다. 고정된 종목 목록 없이, 선택한 모든 조건을 동시에 통과한 교집합만 보여줍니다.</p></div>
             <div className="workflow-actions">
-              <span className={universeStocks.length ? "universe-status ready" : "universe-status"}><i /> {universeLoading ? "시총 기준 종목 수집 중" : universeStocks.length ? `시총 3천억 이상 ${universeStocks.length.toLocaleString("ko-KR")}개 준비` : "종목 가져오기 실행 대기"}</span>
+              <span className={universeStocks.length ? "universe-status ready" : "universe-status"}><i /> {weeklyLoading ? `전주 금요일 종가 ${weeklyProgress.completed}/${weeklyProgress.total} 묶음 수집 중` : universeLoading ? "시총 기준 종목 수집 중" : universeStocks.length ? `시총 3천억 이상 ${universeStocks.length.toLocaleString("ko-KR")}개 준비` : "종목 가져오기 실행 대기"}</span>
               <div className="workflow-action-buttons">
-                <button type="button" className="workflow-refresh-button" onClick={() => void refreshWorkflowData()} disabled={workflowRefreshing || universeLoading || running} aria-label="전체 노드 데이터를 한 번 새로 받기"><span aria-hidden="true">↻</span>{workflowRefreshing ? "모든 노드 갱신 중…" : universeLoading ? "데이터 받는 중…" : "데이터 새로받기"}</button>
+                <button type="button" className="workflow-refresh-button" onClick={() => void refreshWorkflowData()} disabled={workflowRefreshing || universeLoading || running} aria-label="전체 노드 데이터를 한 번 새로 받기"><span aria-hidden="true">↻</span>{weeklyLoading ? `주간 데이터 ${weeklyProgress.completed}/${weeklyProgress.total}` : workflowRefreshing ? "모든 노드 갱신 중…" : universeLoading ? "데이터 받는 중…" : "데이터 새로받기"}</button>
                 <button type="button" className="primary-button run-button" onClick={() => void runWorkflow()} disabled={running || universeLoading || workflowRefreshing || selectedConditionPipeline.length === 0}>{running || universeLoading || workflowRefreshing ? "교집합 계산 중…" : "모든 조건 만족 검색"}<span>{running || universeLoading || workflowRefreshing ? "●" : "∩"}</span></button>
               </div>
-              <small className={workflowRefreshedAt ? "workflow-refresh-note complete" : "workflow-refresh-note"}>{workflowRefreshing ? "최신 유니버스를 1회 받아 모든 노드를 다시 계산합니다." : workflowRefreshedAt ? `전체 노드 갱신 완료 · ${new Date(workflowRefreshedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "한 번 받은 최신 데이터로 모든 노드의 후보 수와 교집합을 다시 계산합니다."}</small>
+              <small className={workflowRefreshedAt ? "workflow-refresh-note complete" : "workflow-refresh-note"}>{weeklyLoading ? "전주 금요일 종가를 종목별로 확인해 주간 상승률을 계산하고 있습니다." : workflowRefreshing ? "최신 유니버스를 1회 받아 모든 노드를 다시 계산합니다." : workflowRefreshedAt ? `전체 노드 갱신 완료 · ${new Date(workflowRefreshedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "한 번 받은 최신 데이터로 모든 노드의 후보 수와 교집합을 다시 계산합니다."}</small>
             </div>
           </section>
           <section className="workflow-layout">
@@ -688,7 +744,7 @@ export default function Home() {
                   return (
                     <button type="button" key={node.id} className={`${order ? "library-node selected" : "library-node"}${node.isSource ? " source-node" : ""}`} onClick={() => togglePipelineNode(node)} aria-pressed={order > 0}>
                       <span className="library-order">{order || "+"}</span>
-                      <span><b>{node.name}</b><small>{node.isSource ? "고정 시작 · 시총 3,000억 이상" : universeStocks.length ? `${node.category} · 현재 ${nodeCandidateCounts[node.id].toLocaleString("ko-KR")}개` : `${node.category} · 전체 유니버스 대상`}</small></span>
+                      <span><b>{node.name}</b><small>{node.isSource ? "고정 시작 · 시총 3,000억 이상" : `${node.category} · ${nodeCandidateLabel(node)}`}</small></span>
                     </button>
                   );
                 })}
@@ -698,7 +754,7 @@ export default function Home() {
                 {selectedPipeline.length > 0 ? selectedPipeline.map((node, index) => (
                   <div className="node-step-wrap" key={node.id}>
                     <button type="button" className={`${selectedNodeId === node.id ? "node-step active" : "node-step"}${node.isSource ? " source-step" : ""}`} onClick={() => setSelectedNodeId(node.id)}>
-                      <span className="node-order">{index + 1}</span><span>{node.category}</span><b>{node.name}</b><small>{node.isSource ? universeStocks.length ? `기준 통과 ${universeStocks.length.toLocaleString("ko-KR")}개` : "시총 3,000억 이상" : universeStocks.length ? `현재 후보 ${nodeCandidateCounts[node.id].toLocaleString("ko-KR")}개` : "전체 유니버스 계산"}</small>
+                      <span className="node-order">{index + 1}</span><span>{node.category}</span><b>{node.name}</b><small>{nodeCandidateLabel(node)}</small>
                     </button>
                     {index < selectedPipeline.length - 1 && <i className="connector">→</i>}
                   </div>
@@ -714,7 +770,7 @@ export default function Home() {
               <dl>
                 <div><dt>실행 순서</dt><dd>{selectedPipelineIds.includes(selectedNode.id) ? `${selectedPipelineIds.indexOf(selectedNode.id) + 1}번째` : "미선택"}</dd></div>
                 <div><dt>검색 방식</dt><dd>{selectedNode.isSource ? "전체 유니버스" : "교집합 AND"}</dd></div>
-                <div><dt>후보 풀</dt><dd>{universeStocks.length ? `${nodeCandidateCounts[selectedNode.id].toLocaleString("ko-KR")}개` : "가져오기 전"}</dd></div>
+                <div><dt>후보 풀</dt><dd>{selectedNode.id === "weekly10" && !weeklyDataReady ? "새로받기 또는 검색 필요" : universeStocks.length ? `${nodeCandidateCounts[selectedNode.id].toLocaleString("ko-KR")}개` : "가져오기 전"}</dd></div>
                 <div><dt>현재 검색식</dt><dd className="rule-value">{selectedNode.rule}</dd></div>
                 {selectedNode.isSource && <div><dt>시가총액 기준</dt><dd>최종 3,000억원 이상</dd></div>}
                 {selectedNode.isSource && <div><dt>시장 구성</dt><dd>{universeStocks.length ? `KOSPI ${universeCounts.KOSPI.toLocaleString("ko-KR")} · KOSDAQ ${universeCounts.KOSDAQ.toLocaleString("ko-KR")}` : "KOSPI + KOSDAQ"}</dd></div>}
@@ -735,7 +791,7 @@ export default function Home() {
                   <button type="button" key={result.symbol} className="intersection-result" onClick={() => analyzeWorkflowStock(result)} aria-label={`${result.name} 종목분석 열기`}>
                     <div className="intersection-stock"><span><b>{result.name}</b><small>{result.symbol} · {result.market}</small></span><em>{result.marketStatus === "OPEN" ? "장중" : "최근 종가"}</em></div>
                     <div className="intersection-price"><strong>{result.price == null ? "시세 확인 필요" : won(result.price)}</strong>{result.change != null && <span className={result.change >= 0 ? "positive" : "negative"}>{result.change >= 0 ? "+" : ""}{result.change.toFixed(2)}%</span>}</div>
-                    <div className="result-data-tags"><span className="market-cap">{marketCapLabel(result.marketCap)}</span><span className="market-cap">{tradingValueLabel(result.tradingValue)}</span></div>
+                    <div className="result-data-tags"><span className="market-cap">{marketCapLabel(result.marketCap)}</span><span className="market-cap">{tradingValueLabel(result.tradingValue)}</span>{result.weeklyChange != null && <span className="market-cap">전주 금요일 대비 {result.weeklyChange > 0 ? "+" : ""}{result.weeklyChange.toFixed(2)}%</span>}</div>
                     <div className="matched-nodes">{result.matchedBy.map((name) => <span key={name}>{name}</span>)}</div>
                     <span className="result-open">종목분석 열기 →</span>
                   </button>

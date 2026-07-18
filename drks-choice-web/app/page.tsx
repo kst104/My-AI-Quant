@@ -279,6 +279,8 @@ export default function Home() {
   const [universeCounts, setUniverseCounts] = useState({ KOSPI: 0, KOSDAQ: 0 });
   const [universeUpdatedAt, setUniverseUpdatedAt] = useState<string | null>(null);
   const [universeLoading, setUniverseLoading] = useState(false);
+  const [workflowRefreshing, setWorkflowRefreshing] = useState(false);
+  const [workflowRefreshedAt, setWorkflowRefreshedAt] = useState<string | null>(null);
   const [intersectionResults, setIntersectionResults] = useState<Array<UniverseStock & { matchedBy: string[] }>>([]);
 
   const baseStock = stocks.find((item) => item.symbol === selectedSymbol) ?? stocks[0];
@@ -468,6 +470,33 @@ export default function Home() {
     }
   };
 
+  const refreshWorkflowData = async () => {
+    if (workflowRefreshing || universeLoading || running) return;
+    setWorkflowRefreshing(true);
+    setRunComplete(false);
+    setRefreshError("");
+    try {
+      const universe = await fetchUniverse();
+      const currentStats = buildUniverseStats(universe);
+      if (selectedConditionPipeline.length > 0) {
+        const matchedBy = selectedConditionPipeline.map((node) => node.name);
+        setIntersectionResults(
+          universe
+            .filter((item) => selectedConditionPipeline.every((node) => matchesNode(node.id, item, currentStats)))
+            .map((item) => ({ ...item, matchedBy })),
+        );
+        setRunComplete(true);
+      } else {
+        setIntersectionResults([]);
+      }
+      setWorkflowRefreshedAt(new Date().toISOString());
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "전체 노드 데이터 새로받기에 실패했습니다.");
+    } finally {
+      setWorkflowRefreshing(false);
+    }
+  };
+
   return (
     <div className="site-shell">
       <header className="topbar">
@@ -643,7 +672,11 @@ export default function Home() {
             <div><span className="eyebrow">INTERSECTION NODE WORKFLOW</span><h1>시총 3,000억 이상 종목에서,<br />모든 조건을 만족한 종목만.</h1><p>1번 노드가 만든 전체 유니버스를 각 조건 노드가 실제 데이터로 다시 평가합니다. 고정된 종목 목록 없이, 선택한 모든 조건을 동시에 통과한 교집합만 보여줍니다.</p></div>
             <div className="workflow-actions">
               <span className={universeStocks.length ? "universe-status ready" : "universe-status"}><i /> {universeLoading ? "시총 기준 종목 수집 중" : universeStocks.length ? `시총 3천억 이상 ${universeStocks.length.toLocaleString("ko-KR")}개 준비` : "종목 가져오기 실행 대기"}</span>
-              <button type="button" className="primary-button run-button" onClick={() => void runWorkflow()} disabled={running || universeLoading || selectedConditionPipeline.length === 0}>{running || universeLoading ? "교집합 계산 중…" : "모든 조건 만족 검색"}<span>{running || universeLoading ? "●" : "∩"}</span></button>
+              <div className="workflow-action-buttons">
+                <button type="button" className="workflow-refresh-button" onClick={() => void refreshWorkflowData()} disabled={workflowRefreshing || universeLoading || running} aria-label="전체 노드 데이터를 한 번 새로 받기"><span aria-hidden="true">↻</span>{workflowRefreshing ? "모든 노드 갱신 중…" : universeLoading ? "데이터 받는 중…" : "데이터 새로받기"}</button>
+                <button type="button" className="primary-button run-button" onClick={() => void runWorkflow()} disabled={running || universeLoading || workflowRefreshing || selectedConditionPipeline.length === 0}>{running || universeLoading || workflowRefreshing ? "교집합 계산 중…" : "모든 조건 만족 검색"}<span>{running || universeLoading || workflowRefreshing ? "●" : "∩"}</span></button>
+              </div>
+              <small className={workflowRefreshedAt ? "workflow-refresh-note complete" : "workflow-refresh-note"}>{workflowRefreshing ? "최신 유니버스를 1회 받아 모든 노드를 다시 계산합니다." : workflowRefreshedAt ? `전체 노드 갱신 완료 · ${new Date(workflowRefreshedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "한 번 받은 최신 데이터로 모든 노드의 후보 수와 교집합을 다시 계산합니다."}</small>
             </div>
           </section>
           <section className="workflow-layout">

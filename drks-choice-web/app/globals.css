@@ -278,10 +278,17 @@ td:first-child small { margin-top: 3px; color: #99a3b2; font-size: 8px; }
 
 .workflow-hero { align-items: center; }
 .workflow-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.workflow-action-buttons { display: flex; align-items: center; gap: 8px; }
 .universe-status { display: inline-flex; align-items: center; gap: 7px; color: #78869a; font-size: 9px; font-weight: 760; }
 .universe-status i { width: 7px; height: 7px; border-radius: 50%; background: #aab4c3; }
 .universe-status.ready { color: #118856; }
 .universe-status.ready i { background: var(--green); box-shadow: 0 0 0 4px rgba(23,178,106,.1); }
+.workflow-refresh-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 15px; border: 1px solid #cbd8eb; border-radius: 11px; background: rgba(255,255,255,.88); color: #35629f; font-size: 10px; font-weight: 820; cursor: pointer; box-shadow: 0 8px 20px rgba(43,83,140,.07); }
+.workflow-refresh-button span { font-size: 15px; line-height: 1; }
+.workflow-refresh-button:hover { border-color: #8aa8d5; background: #f7faff; }
+.workflow-refresh-button:disabled { cursor: wait; opacity: .62; }
+.workflow-refresh-note { max-width: 360px; color: #7f8da1; font-size: 8px; line-height: 1.45; text-align: right; }
+.workflow-refresh-note.complete { color: #118856; font-weight: 760; }
 .run-button { min-width: 144px; background: var(--blue); color: #fff; }
 .run-button:disabled { cursor: wait; opacity: .72; }
 .workflow-layout { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(280px, .8fr); gap: 18px; }
@@ -429,6 +436,9 @@ td:first-child small { margin-top: 3px; color: #99a3b2; font-size: 8px; }
   .subpage { padding-top: 30px; }
   .subpage-hero { align-items: stretch; flex-direction: column; }
   .workflow-actions { align-items: stretch; }
+  .workflow-action-buttons { align-items: stretch; flex-direction: column; }
+  .workflow-refresh-button { width: 100%; }
+  .workflow-refresh-note { max-width: none; text-align: left; }
   .universe-count { min-width: 0; }
   .screen-toolbar { align-items: flex-start; flex-direction: column; }
   .filter-buttons { width: 100%; overflow-x: auto; }

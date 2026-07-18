@@ -29,6 +29,13 @@ npm run build
 
 이 프로젝트는 `app/api` 서버 라우트를 사용하므로 정적 파일만 제공하는 GitHub Pages에서는 실제 데이터 기능이 실행되지 않습니다. Node.js 서버 또는 Cloudflare Workers 호환 환경에 배포해야 전체 기능을 사용할 수 있습니다.
 
+Cloudflare Workers 무료 배포 설정은 `wrangler.jsonc`에 포함되어 있습니다. Cloudflare 로그인 후 다음 명령으로 빌드와 배포를 한 번에 실행할 수 있습니다.
+
+```bash
+npx wrangler login
+npx vinext deploy --name drks-choice-analytics
+```
+
 현재 운영 사이트: <https://alphaforge-analytics.kst104.chatgpt.site/>
 
 교육·분석용 프로젝트이며 투자 자문이나 수익을 보장하지 않습니다.

@@ -36,6 +36,6 @@ npx wrangler login
 npx vinext deploy --name drks-choice-analytics
 ```
 
-현재 운영 사이트: <https://alphaforge-analytics.kst104.chatgpt.site/>
+현재 무료 운영 사이트: <https://drks-choice-analytics.promokorea.workers.dev/>
 
 교육·분석용 프로젝트이며 투자 자문이나 수익을 보장하지 않습니다.

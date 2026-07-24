@@ -1,27 +1,14 @@
 {
   "source": "local-consensus-report-snapshot",
-  "generatedAt": "2026-07-23T08:03:28Z",
+  "generatedAt": "2026-07-24T08:02:24Z",
   "lookbackTradingDays": [
+    "2026-07-24",
     "2026-07-23",
     "2026-07-22",
     "2026-07-21",
-    "2026-07-20",
-    "2026-07-16"
+    "2026-07-20"
   ],
-  "reportDates": [
-    "2026-07-16"
-  ],
-  "matchedDocumentSets": 1,
-  "stocks": [
-    { "symbol": "096770", "name": "SK이노베이션", "reportCount": 1 },
-    { "symbol": "214450", "name": "파마리서치", "reportCount": 3 },
-    { "symbol": "015760", "name": "한국전력", "reportCount": 1 },
-    { "symbol": "000810", "name": "삼성화재", "reportCount": 1 },
-    { "symbol": "161890", "name": "한국콜마", "reportCount": 1 },
-    { "symbol": "017670", "name": "SK텔레콤", "reportCount": 1 },
-    { "symbol": "009150", "name": "삼성전기", "reportCount": 1 },
-    { "symbol": "475150", "name": "SK이터닉스", "reportCount": 1 },
-    { "symbol": "018880", "name": "한온시스템", "reportCount": 1 },
-    { "symbol": "073240", "name": "금호타이어", "reportCount": 1 }
-  ]
+  "reportDates": [],
+  "matchedDocumentSets": 0,
+  "stocks": []
 }

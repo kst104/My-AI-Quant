@@ -1,12 +1,12 @@
 {
   "source": "local-consensus-report-snapshot",
-  "generatedAt": "2026-07-28T08:01:57Z",
+  "generatedAt": "2026-07-29T08:01:57Z",
   "lookbackTradingDays": [
+    "2026-07-29",
     "2026-07-28",
     "2026-07-27",
     "2026-07-24",
-    "2026-07-23",
-    "2026-07-22"
+    "2026-07-23"
   ],
   "reportDates": [],
   "matchedDocumentSets": 0,

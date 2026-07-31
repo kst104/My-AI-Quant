@@ -82,6 +82,15 @@ type UniverseStock = Pick<LiveQuote, "symbol" | "name" | "market" | "price" | "c
   multiEnvelopeRecoveryPercent: number | null;
   multiEnvelopeLowPenetrationPercent: number | null;
   multiEnvelopeTradingDate: string | null;
+  bbMacdBreakout: boolean;
+  bbMacdSignalType: string | null;
+  bbMacdValue: number | null;
+  bbMacdAverage9: number | null;
+  bbMacdStandardDeviation9: number | null;
+  bbMacdUpperBand: number | null;
+  bbMacdLowerBand: number | null;
+  bbMacdZScore: number | null;
+  bbMacdTradingDate: string | null;
 };
 
 type ConsensusSnapshot = {
@@ -203,6 +212,7 @@ const pipelineLibrary: PipelineNode[] = [
   { id: "elephantCandle", name: "코끼리캔들", category: "CANDLE", detail: "첨부 검색식의 기본 SearchMode 1을 적용해 몸통이 크고 빠른 이동평균이 상승하는 양봉 코끼리캔들을 찾습니다.", rule: "양봉 · 몸통비율 ≥ 70% · 몸통 ≥ 전일 ATR(100) × 1.3 · SMA(8) 방향 상승" },
   { id: "bollingerSqueeze", name: "볼린저스퀴즈", category: "SQUEEZE", detail: "볼린저밴드가 과거 평균보다 강하게 수축한 상태에서 EMA20을 상향 돌파하거나 EMA20 부근을 지지한 양봉을 찾습니다.", rule: "BB(20,2) 폭 ≤ 40일 평균 × 70% · 양봉 · (EMA20 돌파 OR 저가 EMA20 ±0.3% 터치)" },
   { id: "multiEnvelope", name: "멀티엔벨로프", category: "ENVELOPE", detail: "일봉 RMA(20)를 기준으로 넓힌 하단 엔벨로프를 최근 저가가 이탈한 뒤 종가가 다시 상향 돌파하는 매수 신호를 찾습니다.", rule: "일봉 · RMA(20) · 하단폭 4.18% × 7 · (금일 또는 전일 저가 이탈) · 종가 CrossUp" },
+  { id: "bbMacd", name: "BB on MACD", category: "MACD", detail: "EMA(8)과 EMA(26)의 차이에 EMA(9) 중심선과 표준편차 밴드를 적용해 음수 구간에서 상단밴드를 처음 돌파하는 종목을 찾습니다.", rule: "BBMacd > 상단밴드 · 전일 BBMacd ≤ 전일 상단밴드 · 금일 또는 전일 BBMacd < 0" },
   { id: "risk", name: "급락 경고", category: "RISK", detail: "전체 유니버스에서 거래가 충분하면서 당일 낙폭이 큰 위험 관찰 종목을 계산합니다.", rule: "등락률 ≤ -5% · 거래대금 중간값 이상" },
 ];
 
@@ -254,6 +264,7 @@ function matchesNode(nodeId: string, stock: UniverseStock, stats: UniverseStats)
   if (nodeId === "elephantCandle") return stock.elephantCandle;
   if (nodeId === "bollingerSqueeze") return stock.bollingerSqueeze;
   if (nodeId === "multiEnvelope") return stock.multiEnvelope;
+  if (nodeId === "bbMacd") return stock.bbMacdBreakout;
   if (change == null || marketCap == null) return false;
 
   switch (nodeId) {
@@ -272,7 +283,12 @@ function buildIntersectionResults(items: UniverseStock[], nodes: PipelineNode[],
   const results = items
     .filter((item) => nodes.every((node) => matchesNode(node.id, item, stats)))
     .map((item) => ({ ...item, matchedBy }));
-  if (nodes.some((node) => node.id === "multiEnvelope")) {
+  if (nodes.some((node) => node.id === "bbMacd")) {
+    results.sort((left, right) => (
+      (left.bbMacdZScore ?? Number.POSITIVE_INFINITY)
+      - (right.bbMacdZScore ?? Number.POSITIVE_INFINITY)
+    ));
+  } else if (nodes.some((node) => node.id === "multiEnvelope")) {
     results.sort((left, right) => (
       (left.multiEnvelopeRecoveryPercent ?? Number.POSITIVE_INFINITY)
       - (right.multiEnvelopeRecoveryPercent ?? Number.POSITIVE_INFINITY)
@@ -392,6 +408,9 @@ export default function Home() {
   const [multiEnvelopeLoading, setMultiEnvelopeLoading] = useState(false);
   const [multiEnvelopeDataReady, setMultiEnvelopeDataReady] = useState(false);
   const [multiEnvelopeProgress, setMultiEnvelopeProgress] = useState({ completed: 0, total: 0 });
+  const [bbMacdLoading, setBbMacdLoading] = useState(false);
+  const [bbMacdDataReady, setBbMacdDataReady] = useState(false);
+  const [bbMacdProgress, setBbMacdProgress] = useState({ completed: 0, total: 0 });
   const [intersectionResults, setIntersectionResults] = useState<Array<UniverseStock & { matchedBy: string[] }>>([]);
 
   const baseStock = stocks.find((item) => item.symbol === selectedSymbol) ?? stocks[0];
@@ -452,6 +471,7 @@ export default function Home() {
     if (node.id === "elephantCandle" && !elephantDataReady) return elephantLoading ? `일봉 계산 ${elephantProgress.completed}/${elephantProgress.total}` : "ATR(100) 데이터 새로받기 필요";
     if (node.id === "bollingerSqueeze" && !bollingerDataReady) return bollingerLoading ? `스퀴즈 계산 ${bollingerProgress.completed}/${bollingerProgress.total}` : "BB·EMA20 데이터 새로받기 필요";
     if (node.id === "multiEnvelope" && !multiEnvelopeDataReady) return multiEnvelopeLoading ? `엔벨로프 계산 ${multiEnvelopeProgress.completed}/${multiEnvelopeProgress.total}` : "RMA(20) 엔벨로프 새로받기 필요";
+    if (node.id === "bbMacd" && !bbMacdDataReady) return bbMacdLoading ? `BB MACD 계산 ${bbMacdProgress.completed}/${bbMacdProgress.total}` : "MACD 밴드 새로받기 필요";
     return universeStocks.length ? `현재 후보 ${nodeCandidateCounts[node.id].toLocaleString("ko-KR")}개` : "전체 유니버스 계산";
   };
 
@@ -532,6 +552,15 @@ export default function Home() {
         multiEnvelopeRecoveryPercent: null,
         multiEnvelopeLowPenetrationPercent: null,
         multiEnvelopeTradingDate: null,
+        bbMacdBreakout: false,
+        bbMacdSignalType: null,
+        bbMacdValue: null,
+        bbMacdAverage9: null,
+        bbMacdStandardDeviation9: null,
+        bbMacdUpperBand: null,
+        bbMacdLowerBand: null,
+        bbMacdZScore: null,
+        bbMacdTradingDate: null,
       }));
       setConsensusDataReady(false);
       setConsensusSnapshot(null);
@@ -540,6 +569,7 @@ export default function Home() {
       setElephantDataReady(false);
       setBollingerDataReady(false);
       setMultiEnvelopeDataReady(false);
+      setBbMacdDataReady(false);
       setUniverseStocks(normalizedStocks);
       setUniverseCounts({ KOSPI: payload.counts?.KOSPI ?? 0, KOSDAQ: payload.counts?.KOSDAQ ?? 0 });
       setUniverseUpdatedAt(payload.updatedAt ?? new Date().toISOString());
@@ -962,6 +992,80 @@ export default function Home() {
     }
   }, []);
 
+  const fetchBbMacdBreakouts = useCallback(async (items: UniverseStock[]) => {
+    const batchSize = 10;
+    const batches = Array.from({ length: Math.ceil(items.length / batchSize) }, (_, index) => items.slice(index * batchSize, (index + 1) * batchSize));
+    const matches = new Map<string, {
+      signalType: string;
+      bbMacd: number;
+      average9: number;
+      standardDeviation9: number;
+      upperBand: number;
+      lowerBand: number;
+      zScore: number;
+      tradingDate: string;
+    }>();
+    let nextBatch = 0;
+    let completed = 0;
+    let evaluated = 0;
+    setBbMacdLoading(true);
+    setBbMacdProgress({ completed: 0, total: batches.length });
+    try {
+      const worker = async () => {
+        while (nextBatch < batches.length) {
+          const batch = batches[nextBatch];
+          nextBatch += 1;
+          try {
+            const response = await fetch(`/api/bb-macd?symbols=${batch.map((item) => item.symbol).join(",")}`, { cache: "no-store" });
+            const payload = await response.json() as {
+              evaluated?: number;
+              results?: Array<{
+                symbol: string;
+                signalType: string;
+                bbMacd: number;
+                average9: number;
+                standardDeviation9: number;
+                upperBand: number;
+                lowerBand: number;
+                zScore: number;
+                tradingDate: string;
+              }>;
+            };
+            if (response.ok) {
+              evaluated += payload.evaluated ?? 0;
+              payload.results?.forEach((item) => matches.set(item.symbol, item));
+            }
+          } finally {
+            completed += 1;
+            setBbMacdProgress({ completed, total: batches.length });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(3, batches.length) }, () => worker()));
+      if (evaluated === 0) throw new Error("BB on MACD 계산에 필요한 EMA·표준편차 일봉 데이터가 없습니다.");
+      const enriched = items.map((item) => {
+        const match = matches.get(item.symbol);
+        return {
+          ...item,
+          bbMacdBreakout: Boolean(match),
+          bbMacdSignalType: match?.signalType ?? null,
+          bbMacdValue: match?.bbMacd ?? null,
+          bbMacdAverage9: match?.average9 ?? null,
+          bbMacdStandardDeviation9: match?.standardDeviation9 ?? null,
+          bbMacdUpperBand: match?.upperBand ?? null,
+          bbMacdLowerBand: match?.lowerBand ?? null,
+          bbMacdZScore: match?.zScore ?? null,
+          bbMacdTradingDate: match?.tradingDate ?? null,
+        };
+      });
+      setBbMacdDataReady(true);
+      setUniverseStocks(enriched);
+      return enriched;
+    } finally {
+      setBbMacdLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshLiveData();
   }, [refreshLiveData]);
@@ -1033,6 +1137,9 @@ export default function Home() {
       if (selectedConditionPipeline.some((node) => node.id === "multiEnvelope") && !multiEnvelopeDataReady) {
         universe = await fetchMultiEnvelopes(universe);
       }
+      if (selectedConditionPipeline.some((node) => node.id === "bbMacd") && !bbMacdDataReady) {
+        universe = await fetchBbMacdBreakouts(universe);
+      }
       const currentStats = buildUniverseStats(universe);
       setIntersectionResults(buildIntersectionResults(universe, selectedConditionPipeline, currentStats));
       setRunComplete(true);
@@ -1056,7 +1163,8 @@ export default function Home() {
       const reversalUniverse = await fetchWeeklyBodyReversals(resistanceUniverse);
       const elephantUniverse = await fetchElephantCandles(reversalUniverse);
       const bollingerUniverse = await fetchBollingerSqueezes(elephantUniverse);
-      const universe = await fetchMultiEnvelopes(bollingerUniverse);
+      const multiEnvelopeUniverse = await fetchMultiEnvelopes(bollingerUniverse);
+      const universe = await fetchBbMacdBreakouts(multiEnvelopeUniverse);
       const currentStats = buildUniverseStats(universe);
       if (selectedConditionPipeline.length > 0) {
         setIntersectionResults(buildIntersectionResults(universe, selectedConditionPipeline, currentStats));
@@ -1246,12 +1354,12 @@ export default function Home() {
           <section className="subpage-hero workflow-hero">
             <div><span className="eyebrow">INTERSECTION NODE WORKFLOW</span><h1>시총 3,000억 이상 종목에서,<br />모든 조건을 만족한 종목만.</h1><p>1번 노드가 만든 전체 유니버스를 각 조건 노드가 실제 데이터로 다시 평가합니다. 고정된 종목 목록 없이, 선택한 모든 조건을 동시에 통과한 교집합만 보여줍니다.</p></div>
             <div className="workflow-actions">
-              <span className={universeStocks.length ? "universe-status ready" : "universe-status"}><i /> {weeklyLoading ? `전주 금요일 종가 ${weeklyProgress.completed}/${weeklyProgress.total} 묶음 수집 중` : consensusLoading ? "컨센서스 상향 종목 확인 중" : candleResistanceLoading ? `캔들 저항선 ${candleResistanceProgress.completed}/${candleResistanceProgress.total} 묶음 계산 중` : weeklyBodyLoading ? `주봉 반전 ${weeklyBodyProgress.completed}/${weeklyBodyProgress.total} 묶음 계산 중` : elephantLoading ? `코끼리캔들 ${elephantProgress.completed}/${elephantProgress.total} 묶음 계산 중` : bollingerLoading ? `볼린저스퀴즈 ${bollingerProgress.completed}/${bollingerProgress.total} 묶음 계산 중` : multiEnvelopeLoading ? `멀티엔벨로프 ${multiEnvelopeProgress.completed}/${multiEnvelopeProgress.total} 묶음 계산 중` : universeLoading ? "시총 기준 종목 수집 중" : universeStocks.length ? `시총 3천억 이상 ${universeStocks.length.toLocaleString("ko-KR")}개 준비` : "종목 가져오기 실행 대기"}</span>
+              <span className={universeStocks.length ? "universe-status ready" : "universe-status"}><i /> {weeklyLoading ? `전주 금요일 종가 ${weeklyProgress.completed}/${weeklyProgress.total} 묶음 수집 중` : consensusLoading ? "컨센서스 상향 종목 확인 중" : candleResistanceLoading ? `캔들 저항선 ${candleResistanceProgress.completed}/${candleResistanceProgress.total} 묶음 계산 중` : weeklyBodyLoading ? `주봉 반전 ${weeklyBodyProgress.completed}/${weeklyBodyProgress.total} 묶음 계산 중` : elephantLoading ? `코끼리캔들 ${elephantProgress.completed}/${elephantProgress.total} 묶음 계산 중` : bollingerLoading ? `볼린저스퀴즈 ${bollingerProgress.completed}/${bollingerProgress.total} 묶음 계산 중` : multiEnvelopeLoading ? `멀티엔벨로프 ${multiEnvelopeProgress.completed}/${multiEnvelopeProgress.total} 묶음 계산 중` : bbMacdLoading ? `BB on MACD ${bbMacdProgress.completed}/${bbMacdProgress.total} 묶음 계산 중` : universeLoading ? "시총 기준 종목 수집 중" : universeStocks.length ? `시총 3천억 이상 ${universeStocks.length.toLocaleString("ko-KR")}개 준비` : "종목 가져오기 실행 대기"}</span>
               <div className="workflow-action-buttons">
-                <button type="button" className="workflow-refresh-button" onClick={() => void refreshWorkflowData()} disabled={workflowRefreshing || universeLoading || running} aria-label="전체 노드 데이터를 한 번 새로 받기"><span aria-hidden="true">↻</span>{weeklyLoading ? `주간 데이터 ${weeklyProgress.completed}/${weeklyProgress.total}` : consensusLoading ? "리포트 데이터 확인 중…" : candleResistanceLoading ? `저항선 계산 ${candleResistanceProgress.completed}/${candleResistanceProgress.total}` : weeklyBodyLoading ? `주봉 반전 ${weeklyBodyProgress.completed}/${weeklyBodyProgress.total}` : elephantLoading ? `코끼리캔들 ${elephantProgress.completed}/${elephantProgress.total}` : bollingerLoading ? `볼린저스퀴즈 ${bollingerProgress.completed}/${bollingerProgress.total}` : multiEnvelopeLoading ? `멀티엔벨로프 ${multiEnvelopeProgress.completed}/${multiEnvelopeProgress.total}` : workflowRefreshing ? "모든 노드 갱신 중…" : universeLoading ? "데이터 받는 중…" : "데이터 새로받기"}</button>
+                <button type="button" className="workflow-refresh-button" onClick={() => void refreshWorkflowData()} disabled={workflowRefreshing || universeLoading || running} aria-label="전체 노드 데이터를 한 번 새로 받기"><span aria-hidden="true">↻</span>{weeklyLoading ? `주간 데이터 ${weeklyProgress.completed}/${weeklyProgress.total}` : consensusLoading ? "리포트 데이터 확인 중…" : candleResistanceLoading ? `저항선 계산 ${candleResistanceProgress.completed}/${candleResistanceProgress.total}` : weeklyBodyLoading ? `주봉 반전 ${weeklyBodyProgress.completed}/${weeklyBodyProgress.total}` : elephantLoading ? `코끼리캔들 ${elephantProgress.completed}/${elephantProgress.total}` : bollingerLoading ? `볼린저스퀴즈 ${bollingerProgress.completed}/${bollingerProgress.total}` : multiEnvelopeLoading ? `멀티엔벨로프 ${multiEnvelopeProgress.completed}/${multiEnvelopeProgress.total}` : bbMacdLoading ? `BB on MACD ${bbMacdProgress.completed}/${bbMacdProgress.total}` : workflowRefreshing ? "모든 노드 갱신 중…" : universeLoading ? "데이터 받는 중…" : "데이터 새로받기"}</button>
                 <button type="button" className="primary-button run-button" onClick={() => void runWorkflow()} disabled={running || universeLoading || workflowRefreshing || selectedConditionPipeline.length === 0}>{running || universeLoading || workflowRefreshing ? "교집합 계산 중…" : "모든 조건 만족 검색"}<span>{running || universeLoading || workflowRefreshing ? "●" : "∩"}</span></button>
               </div>
-              <small className={workflowRefreshedAt ? "workflow-refresh-note complete" : "workflow-refresh-note"}>{weeklyLoading ? "전주 금요일 종가를 종목별로 확인해 주간 상승률을 계산하고 있습니다." : consensusLoading ? "최근 5거래일 목표가상향 리포트에서 추출한 종목 스냅샷을 확인하고 있습니다." : candleResistanceLoading ? "전체 유니버스의 일봉 90개와 ADX(11)를 계산하고 있습니다." : weeklyBodyLoading ? "전체 유니버스의 최근 52주 주봉에서 3주 음봉 몸통 확대와 첫 양봉 전환을 계산하고 있습니다." : elephantLoading ? "전체 유니버스의 일봉으로 몸통 비율, 전일 ATR(100), SMA(8) 방향을 계산하고 있습니다." : bollingerLoading ? "전체 유니버스의 BB(20,2) 수축과 EMA20 돌파·터치 양봉을 계산하고 있습니다." : multiEnvelopeLoading ? "전체 유니버스의 일봉 RMA(20)와 확장 하단 엔벨로프 상향돌파 신호를 계산하고 있습니다." : workflowRefreshing ? "최신 유니버스와 모든 조건 데이터를 1회 받아 전체 노드를 다시 계산합니다." : workflowRefreshedAt ? `전체 노드 갱신 완료 · ${new Date(workflowRefreshedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "한 번 받은 최신 데이터로 모든 노드의 후보 수와 교집합을 다시 계산합니다."}</small>
+              <small className={workflowRefreshedAt ? "workflow-refresh-note complete" : "workflow-refresh-note"}>{weeklyLoading ? "전주 금요일 종가를 종목별로 확인해 주간 상승률을 계산하고 있습니다." : consensusLoading ? "최근 5거래일 목표가상향 리포트에서 추출한 종목 스냅샷을 확인하고 있습니다." : candleResistanceLoading ? "전체 유니버스의 일봉 90개와 ADX(11)를 계산하고 있습니다." : weeklyBodyLoading ? "전체 유니버스의 최근 52주 주봉에서 3주 음봉 몸통 확대와 첫 양봉 전환을 계산하고 있습니다." : elephantLoading ? "전체 유니버스의 일봉으로 몸통 비율, 전일 ATR(100), SMA(8) 방향을 계산하고 있습니다." : bollingerLoading ? "전체 유니버스의 BB(20,2) 수축과 EMA20 돌파·터치 양봉을 계산하고 있습니다." : multiEnvelopeLoading ? "전체 유니버스의 일봉 RMA(20)와 확장 하단 엔벨로프 상향돌파 신호를 계산하고 있습니다." : bbMacdLoading ? "전체 유니버스의 EMA(8·26) MACD와 EMA(9) 표준편차 상단밴드 돌파를 계산하고 있습니다." : workflowRefreshing ? "최신 유니버스와 모든 조건 데이터를 1회 받아 전체 노드를 다시 계산합니다." : workflowRefreshedAt ? `전체 노드 갱신 완료 · ${new Date(workflowRefreshedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "한 번 받은 최신 데이터로 모든 노드의 후보 수와 교집합을 다시 계산합니다."}</small>
             </div>
           </section>
           <section className="workflow-layout">
@@ -1289,7 +1397,7 @@ export default function Home() {
               <dl>
                 <div><dt>실행 순서</dt><dd>{selectedPipelineIds.includes(selectedNode.id) ? `${selectedPipelineIds.indexOf(selectedNode.id) + 1}번째` : "미선택"}</dd></div>
                 <div><dt>검색 방식</dt><dd>{selectedNode.isSource ? "전체 유니버스" : "교집합 AND"}</dd></div>
-                <div><dt>후보 풀</dt><dd>{(selectedNode.id === "weekly10" && !weeklyDataReady) || (selectedNode.id === "consensusUp" && !consensusDataReady) || (selectedNode.id === "candleResistance" && !candleResistanceDataReady) || (selectedNode.id === "weeklyBodyReversal" && !weeklyBodyDataReady) || (selectedNode.id === "elephantCandle" && !elephantDataReady) || (selectedNode.id === "bollingerSqueeze" && !bollingerDataReady) || (selectedNode.id === "multiEnvelope" && !multiEnvelopeDataReady) ? "새로받기 또는 검색 필요" : universeStocks.length ? `${nodeCandidateCounts[selectedNode.id].toLocaleString("ko-KR")}개` : "가져오기 전"}</dd></div>
+                <div><dt>후보 풀</dt><dd>{(selectedNode.id === "weekly10" && !weeklyDataReady) || (selectedNode.id === "consensusUp" && !consensusDataReady) || (selectedNode.id === "candleResistance" && !candleResistanceDataReady) || (selectedNode.id === "weeklyBodyReversal" && !weeklyBodyDataReady) || (selectedNode.id === "elephantCandle" && !elephantDataReady) || (selectedNode.id === "bollingerSqueeze" && !bollingerDataReady) || (selectedNode.id === "multiEnvelope" && !multiEnvelopeDataReady) || (selectedNode.id === "bbMacd" && !bbMacdDataReady) ? "새로받기 또는 검색 필요" : universeStocks.length ? `${nodeCandidateCounts[selectedNode.id].toLocaleString("ko-KR")}개` : "가져오기 전"}</dd></div>
                 <div><dt>현재 검색식</dt><dd className="rule-value">{selectedNode.rule}</dd></div>
                 {selectedNode.id === "candleResistance" && <div><dt>저항선 산식</dt><dd>(시가+종가+고가+저가)÷4 × 거래량</dd></div>}
                 {selectedNode.id === "candleResistance" && <div><dt>결과 순서</dt><dd>저항대비 상승률 낮은 순</dd></div>}
@@ -1308,6 +1416,10 @@ export default function Home() {
                 {selectedNode.id === "multiEnvelope" && <div><dt>하단 엔벨로프</dt><dd>RMA(20) × (1 - 4.18% × 7)</dd></div>}
                 {selectedNode.id === "multiEnvelope" && <div><dt>검색 방향</dt><dd>SignalMode 1 · 매수 신호</dd></div>}
                 {selectedNode.id === "multiEnvelope" && <div><dt>결과 순서</dt><dd>하단선 회복률 낮은 순</dd></div>}
+                {selectedNode.id === "bbMacd" && <div><dt>MACD 산식</dt><dd>EMA(8) - EMA(26)</dd></div>}
+                {selectedNode.id === "bbMacd" && <div><dt>밴드 산식</dt><dd>EMA(9) ± 표준편차(9) × 0.8</dd></div>}
+                {selectedNode.id === "bbMacd" && <div><dt>구간 조건</dt><dd>금일 또는 전일 BBMacd &lt; 0</dd></div>}
+                {selectedNode.id === "bbMacd" && <div><dt>결과 순서</dt><dd>상단밴드 초과 Z값 낮은 순</dd></div>}
                 {selectedNode.id === "consensusUp" && consensusSnapshot && <div><dt>확인한 거래일</dt><dd>{consensusSnapshot.reportDates.join(", ") || "해당 파일 없음"}</dd></div>}
                 {selectedNode.id === "consensusUp" && consensusSnapshot && <div><dt>추출 종목</dt><dd>{consensusSnapshot.stocks.length.toLocaleString("ko-KR")}개 · 중복 제거</dd></div>}
                 {selectedNode.isSource && <div><dt>시가총액 기준</dt><dd>최종 3,000억원 이상</dd></div>}
@@ -1370,6 +1482,15 @@ export default function Home() {
                         <span className="market-cap">저가 이탈 {result.multiEnvelopeLowPenetrationPercent?.toFixed(2)}%</span>
                         {result.multiEnvelopeTradingDate && <span className="market-cap">신호일 {candleDateLabel(result.multiEnvelopeTradingDate)}</span>}
                       </>}
+                      {result.bbMacdBreakout && <>
+                        <span className="market-cap">{result.bbMacdSignalType}</span>
+                        <span className="market-cap">BBMacd {result.bbMacdValue?.toFixed(2)}</span>
+                        <span className="market-cap">상단밴드 {result.bbMacdUpperBand?.toFixed(2)}</span>
+                        <span className="market-cap">중심 EMA(9) {result.bbMacdAverage9?.toFixed(2)}</span>
+                        <span className="market-cap">표준편차 {result.bbMacdStandardDeviation9?.toFixed(2)}</span>
+                        <span className="market-cap">Z값 {result.bbMacdZScore?.toFixed(2)}</span>
+                        {result.bbMacdTradingDate && <span className="market-cap">신호일 {candleDateLabel(result.bbMacdTradingDate)}</span>}
+                      </>}
                     </div>
                     <div className="matched-nodes">{result.matchedBy.map((name) => <span key={name}>{name}</span>)}</div>
                     <span className="result-open">종목분석 열기 →</span>
@@ -1378,7 +1499,7 @@ export default function Home() {
               </div> : <div className="empty-intersection"><strong>모든 조건을 동시에 만족한 종목이 없습니다.</strong><p>조건 노드를 하나씩 해제해 교집합을 넓혀보세요.</p></div>}
             </section>
           )}
-          <p className="disclaimer">종목 가져오기 노드는 NAVER 금융의 KOSPI·KOSDAQ 상장 종목에서 ETF·ETN을 제외하고 최종 시가총액 3,000억원 이상만 불러옵니다. 캔들볼륨 저항선돌파 노드는 최근 90봉 음봉의 가격·거래량 저항선과 Wilder ADX(11)를 실제 일봉으로 계산합니다. 주봉 3주 음봉후 첫 양봉 노드는 최근 52주 고점 대비 20% 이상 하락, 직전 3주 음봉 몸통 연속 확대, 금주 첫 양봉을 실제 주봉으로 계산합니다. 코끼리캔들 노드는 첨부식의 기본 SearchMode 1에 따라 몸통비율 70% 이상, 몸통이 전일 Wilder ATR(100)의 1.3배 이상, SMA(8) 방향 상승인 양봉을 실제 일봉으로 계산합니다. 볼린저스퀴즈 노드는 BB(20,2) 밴드폭이 40일 평균의 70% 이하인 수축 상태에서 EMA20 상향돌파 또는 저가 EMA20 ±0.3% 터치가 나온 양봉을 실제 일봉으로 계산합니다. 멀티엔벨로프 노드는 첨부식의 기본값인 일봉 RMA(20), DailyWidthFactor 7, SignalMode 1을 적용해 금일 또는 전일 저가가 하단선을 이탈한 뒤 종가가 하단선을 상향 돌파한 종목을 계산합니다. 컨센서스상향 노드는 로컬 증권리포트의 최근 5거래일 목표가상향 파일에서 종목명·코드만 추출한 공개용 스냅샷을 사용합니다. 모든 조건 노드는 이 전체 유니버스를 대상으로 계산하며, 선택한 조건의 교집합만 표시합니다. 투자 자문이 아닙니다.</p>
+          <p className="disclaimer">종목 가져오기 노드는 NAVER 금융의 KOSPI·KOSDAQ 상장 종목에서 ETF·ETN을 제외하고 최종 시가총액 3,000억원 이상만 불러옵니다. 캔들볼륨 저항선돌파 노드는 최근 90봉 음봉의 가격·거래량 저항선과 Wilder ADX(11)를 실제 일봉으로 계산합니다. 주봉 3주 음봉후 첫 양봉 노드는 최근 52주 고점 대비 20% 이상 하락, 직전 3주 음봉 몸통 연속 확대, 금주 첫 양봉을 실제 주봉으로 계산합니다. 코끼리캔들 노드는 첨부식의 기본 SearchMode 1에 따라 몸통비율 70% 이상, 몸통이 전일 Wilder ATR(100)의 1.3배 이상, SMA(8) 방향 상승인 양봉을 실제 일봉으로 계산합니다. 볼린저스퀴즈 노드는 BB(20,2) 밴드폭이 40일 평균의 70% 이하인 수축 상태에서 EMA20 상향돌파 또는 저가 EMA20 ±0.3% 터치가 나온 양봉을 실제 일봉으로 계산합니다. 멀티엔벨로프 노드는 첨부식의 기본값인 일봉 RMA(20), DailyWidthFactor 7, SignalMode 1을 적용해 금일 또는 전일 저가가 하단선을 이탈한 뒤 종가가 하단선을 상향 돌파한 종목을 계산합니다. BB on MACD 노드는 EMA(8)-EMA(26) 값에 EMA(9) ± 표준편차(9) × 0.8 밴드를 적용해 금일 또는 전일 MACD가 음수인 상태에서 상단밴드를 처음 돌파한 종목을 계산합니다. 컨센서스상향 노드는 로컬 증권리포트의 최근 5거래일 목표가상향 파일에서 종목명·코드만 추출한 공개용 스냅샷을 사용합니다. 모든 조건 노드는 이 전체 유니버스를 대상으로 계산하며, 선택한 조건의 교집합만 표시합니다. 투자 자문이 아닙니다.</p>
         </main>
       )}
 

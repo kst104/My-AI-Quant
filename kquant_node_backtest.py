@@ -104,9 +104,24 @@ def entry_rsi_dip(df, p):
     trend = c > sma(c, p["trend"])                      # 상승추세에서만
     return (r < p["rsi_buy"]) & trend                   # 눌림목 과매도 반등
 
+def macd_zero_golden_cross(close: pd.Series, fast=12, slow=26, signal=9) -> pd.Series:
+    """노드: MACD 저점 골든크로스.
+
+    조건 = (MACD선 ≤ 0) AND (MACD선이 Signal선을 상향 돌파)
+      · MACD선   = EMA(fast) − EMA(slow)          (기본 12, 26)
+      · Signal선 = MACD선의 EMA(signal)           (기본 9)
+      · 상향돌파 = 직전봉엔 MACD선 ≤ Signal선, 이번봉엔 MACD선 > Signal선
+    반환: 해당 봉에서 True 인 진입 신호 bool Series.
+    """
+    line, sig = macd(close, fast, slow, signal)
+    cross_up = (line > sig) & (line.shift() <= sig.shift())   # 시그널선 상향 돌파
+    return cross_up & (line <= 0)                             # MACD선 0 이하(저점 구간)
+
 def entry_macd(df, p):
-    line, sig = macd(df["Close"])
-    return (line > sig) & (line.shift() <= sig.shift()) & (line < 0)  # 저점 골든
+    return macd_zero_golden_cross(
+        df["Close"],
+        fast=p.get("fast", 12), slow=p.get("slow", 26), signal=p.get("signal", 9),
+    )
 
 def entry_boll_breakout(df, p):
     c = df["Close"]
@@ -122,7 +137,7 @@ ENTRY_NODES = {
     "MA_cross":       (entry_ma_cross,     dict(fast=[5,10,20], slow=[20,60,120])),
     "Breakout":       (entry_breakout,     dict(look=[20,40,60])),
     "RSI_dip":        (entry_rsi_dip,      dict(rsi_n=[14], rsi_buy=[30,35,40], trend=[60,120])),
-    "MACD_gc":        (entry_macd,         dict()),
+    "MACD_gc":        (entry_macd,         dict(fast=[12], slow=[26], signal=[9])),
     "Boll_breakout":  (entry_boll_breakout,dict(bb_n=[20], bb_k=[2.0,2.5])),
     "Momentum":       (entry_momentum,     dict(mom_n=[20,60], mom_th=[0.10,0.20], trend=[60,120])),
 }

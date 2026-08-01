@@ -319,6 +319,38 @@ def load_fdr(tickers, start, end) -> dict[str, pd.DataFrame]:
             print(f"  {t} 로드 실패: {msg[:120]}")
     return out
 
+def load_marcap(data_dir: str, tickers, start, end) -> dict[str, pd.DataFrame]:
+    """FinanceData/marcap parquet(연도별)에서 종목 OHLCV 추출. 로컬/오프라인 KRX 데이터.
+
+    data_dir 안에 marcap-YYYY.parquet 파일들이 있어야 함
+    (git clone https://github.com/FinanceData/marcap).
+    """
+    start, end = pd.Timestamp(start), pd.Timestamp(end)
+    years = range(start.year, end.year + 1)
+    frames = []
+    for y in years:
+        f = Path(data_dir) / f"marcap-{y}.parquet"
+        if f.exists():
+            frames.append(pd.read_parquet(f, columns=["Code", "Date", "Open", "High", "Low", "Close", "Volume"]))
+        else:
+            print(f"  (marcap-{y}.parquet 없음)")
+    if not frames:
+        print("marcap 데이터 파일을 찾지 못했습니다."); return {}
+    big = pd.concat(frames, ignore_index=True)
+    big = big[(big["Date"] >= start) & (big["Date"] <= end)]
+    want = {str(t).zfill(6) for t in tickers}
+    out = {}
+    for code, g in big[big["Code"].isin(want)].groupby("Code"):
+        g = g.set_index("Date").sort_index()[["Open", "High", "Low", "Close", "Volume"]].dropna()
+        if len(g) > 30:
+            out[code] = g
+            print(f"  loaded {code}: {len(g)} rows  {g.index[0].date()}~{g.index[-1].date()}")
+    missing = want - set(out.keys())
+    if missing:
+        print(f"  (해당 기간 데이터 없음/상장폐지: {sorted(missing)})")
+    return out
+
+
 def make_demo(n_tickers=6, days=252, seed=7) -> dict[str, pd.DataFrame]:
     """합성 일봉: 일부 종목에 큰 추세를 심어 엔진 동작을 자체검증."""
     rng = np.random.default_rng(seed)
@@ -399,6 +431,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", help="종목 CSV 폴더 경로")
     ap.add_argument("--fdr", help="FinanceDataReader 티커들, 쉼표구분 (예: 005930,247540)")
+    ap.add_argument("--marcap", help="marcap parquet 폴더 경로 (git clone FinanceData/marcap 의 data/)")
+    ap.add_argument("--tickers", help="--marcap 와 함께 쓸 티커들, 쉼표구분")
     ap.add_argument("--start", default="2024-08-01")
     ap.add_argument("--end", default="2025-08-01")
     ap.add_argument("--demo", action="store_true", help="합성데이터 자체검증")
@@ -409,6 +443,11 @@ def main():
 
     if a.demo:
         data = make_demo()
+    elif a.marcap:
+        tks = [t.strip() for t in (a.tickers or a.fdr or "").split(",") if t.strip()]
+        if not tks:
+            print("--marcap 와 함께 --tickers 를 지정하세요."); sys.exit(1)
+        data = load_marcap(a.marcap, tks, a.start, a.end)
     elif a.csv:
         data = load_csv_dir(a.csv)
     elif a.fdr:

@@ -233,6 +233,20 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(24, 92, 255,
 .valuation-metrics > div::after { content: ""; position: absolute; top: -28px; right: -28px; width: 66px; height: 66px; border-radius: 50%; background: rgba(24,92,255,.08); }
 .valuation-metrics span, .valuation-metrics small { display: block; color: #7d899c; font-size: 9px; font-weight: 720; }
 .valuation-metrics strong { display: block; margin: 6px 0 4px; font-size: 24px; letter-spacing: -.04em; }
+.graham-analysis { margin-top: 18px; padding: 18px; border: 1px solid #dbe4f2; border-radius: 16px; background: linear-gradient(135deg, #f8fbff, #eef8f5); }
+.graham-analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.graham-analysis-head h3 { margin: 3px 0 0; font-size: 18px; letter-spacing: -.035em; }
+.graham-status { padding: 6px 9px; border-radius: 999px; background: #fff1ef; color: #c74c3c; font-size: 9px; font-weight: 800; }
+.graham-status.pass { background: #ddf7ea; color: #078858; }
+.graham-analysis-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 14px; }
+.graham-analysis-metrics > div { padding: 13px; border-radius: 12px; background: rgba(255,255,255,.82); }
+.graham-analysis-metrics > div.is-pass { background: #e5f8ef; }
+.graham-analysis-metrics span { display: block; color: #718096; font-size: 9px; font-weight: 800; }
+.graham-analysis-metrics strong { display: block; margin-top: 6px; color: #18243a; font-size: 22px; letter-spacing: -.035em; }
+.graham-analysis-metrics strong small { margin-left: 2px; color: #7d899c; font-size: 10px; }
+.graham-analysis-message { margin: 14px 0 0; color: #64748b; font-size: 11px; }
+.graham-analysis-message.is-error { color: #b85c4a; }
+.graham-analysis-source { margin: 11px 0 0; color: #8793a6; font-size: 9px; }
 .watchlist { margin-top: 11px; }
 .watchlist button { display: grid; grid-template-columns: 1fr auto 64px; align-items: center; width: 100%; gap: 10px; padding: 11px 0; border: 0; border-top: 1px solid #e8edf4; background: transparent; text-align: left; cursor: pointer; }
 .watchlist button:hover b { color: var(--blue); }
@@ -431,6 +445,7 @@ td:first-child small { margin-top: 3px; color: #99a3b2; font-size: 8px; }
   .chart-legend { flex-wrap: wrap; gap: 10px 16px; }
   .candle-chart, .chart-state { height: 250px; }
   .valuation-metrics { grid-template-columns: 1fr; }
+  .graham-analysis-metrics { grid-template-columns: 1fr; }
   .engine-strip { align-items: flex-start; flex-direction: column; padding: 24px; }
   .primary-button { width: 100%; }
   .subpage { padding-top: 30px; }
